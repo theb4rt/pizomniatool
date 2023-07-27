@@ -99,9 +99,9 @@ class Menu(ScrollableList):
         self.clear_screen()
         with self.term.location(0, 0):
             title = f"""{self.term.bold_green}
-    ┏━━━━━━━━━━━━━━━━┓
-    ┃  Dyssomnia Rpi ┃
-    ┗━━━━━━━━━━━━━━━━┛
+    ┏━━━━━━━━━━━━━━━━━┓
+    ┃   PiZ0mn1aTool  ┃
+    ┗━━━━━━━━━━━━━━━━━┛
     {self.term.normal}"""
             print(self.term.center(title))
             print(self.term.center('-' * self.term.width))

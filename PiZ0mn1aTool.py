@@ -1,69 +1,70 @@
-#!/usr/bin/env
+#!/usr/bin/env python
 
 import time
-
 from blessed import Terminal
 from gpiozero import Button
 from scaning import launch_scan
-import time
-
 from scrollable_list import ScrollableList
+from enum import Enum
 
-KEY1 = 3  # Joystick center
-KEY2 = 5  # Joystick up
-KEY3 = 6  # Joystick right
-KEY4 = 16  # Joystick down
-KEY5 = 13  # Joystick left
-KEY6 = 26  # Button Select
-KEY7 = 19  # Button Start
-KEY8 = 21  # Button A
-KEY9 = 20  # Button B
-KEY10 = 15  # Button X
-KEY11 = 12  # Button Y
-KEY12 = 14  # Button R
-KEY13 = 23  # Button L
+
+class Key(Enum):
+    JOYSTICK_CENTER = 3
+    JOYSTICK_UP = 5
+    JOYSTICK_RIGHT = 6
+    JOYSTICK_DOWN = 16
+    JOYSTICK_LEFT = 13
+    BUTTON_SELECT = 26
+    BUTTON_START = 19
+    BUTTON_A = 21
+    BUTTON_B = 20
+    BUTTON_X = 15
+    BUTTON_Y = 12
+    BUTTON_R = 14
+    BUTTON_L = 23
+
+
+class Direction(Enum):
+    UP = "up"
+    RIGHT = "right"
+    DOWN = "down"
+    LEFT = "left"
+    CENTER = "center"
+    BACK = "back"
+    SCROLL_UP = "scroll_up"
+    SCROLL_DOWN = "scroll_down"
 
 
 class Controls:
     def __init__(self):
-        self.JOYSTICK_CENTER = Button(KEY1)
-        self.JOYSTICK_UP = Button(KEY2)
-        self.JOYSTICK_RIGHT = Button(KEY3)
-        self.JOYSTICK_DOWN = Button(KEY4)
-        self.JOYSTICK_LEFT = Button(KEY5)
-        self.BUTTON_L = Button(KEY13)
-        self.BUTTON_B = Button(KEY9)
-        self.BUTTON_A = Button(KEY8)
+        self.buttons = {
+            Direction.UP: Button(Key.JOYSTICK_UP.value),
+            Direction.RIGHT: Button(Key.JOYSTICK_RIGHT.value),
+            Direction.DOWN: Button(Key.JOYSTICK_DOWN.value),
+            Direction.LEFT: Button(Key.JOYSTICK_LEFT.value),
+            Direction.CENTER: Button(Key.JOYSTICK_CENTER.value),
+            Direction.BACK: Button(Key.BUTTON_L.value),
+            Direction.SCROLL_UP: Button(Key.BUTTON_B.value),
+            Direction.SCROLL_DOWN: Button(Key.BUTTON_A.value),
+        }
 
-    def get_direction(self):
-        if self.JOYSTICK_UP.is_pressed:
-            return "up"
-        elif self.JOYSTICK_RIGHT.is_pressed:
-            return "right"
-        elif self.JOYSTICK_DOWN.is_pressed:
-            return "down"
-        elif self.JOYSTICK_LEFT.is_pressed:
-            return "left"
-        elif self.JOYSTICK_CENTER.is_pressed:
-            return "center"
-        elif self.BUTTON_L.is_pressed:
-            return "back"
-        elif self.BUTTON_B.is_pressed:
-            return "scroll_up"
-        elif self.BUTTON_A.is_pressed:
-            return "scroll_down"
-        else:
-            return None
+    @property
+    def direction(self):
+        for direction, button in self.buttons.items():
+            if button.is_pressed:
+                return direction
+        return None
 
 
 class Menu(ScrollableList):
-    def __init__(self, term, items, scrollable_items):
+    def __init__(self, term, items, scrollable_items, controls, parent=None):
         super().__init__(term, scrollable_items)
+        self.controls = controls
         self.term = term
         self.items = items
         self.selected_item = 0
         self.active_ips = []
-        self.controls = Controls()
+        self.parent = parent
 
     def print_menu(self):
         self.clear_screen()
@@ -81,19 +82,18 @@ class Menu(ScrollableList):
                 else:
                     print(self.term.center('   ' + item))
             print(self.term.center('-' * self.term.width))
-        # print(self.term.center('Navigate with the joystick. Select with center. Back with Button L'))
 
     def clear_screen(self):
         print(self.term.clear)
 
     def move_selection(self, direction):
-        if direction == "up":
+        if direction == Direction.UP.value:
             self.selected_item = max(0, self.selected_item - 1)
-        elif direction == "down":
+        elif direction == Direction.DOWN.value:
             self.selected_item = min(len(self.items) - 1, self.selected_item + 1)
 
     def execute_selected(self):
-        if self.controls.get_direction() == "center":
+        if self.controls.direction == Direction.CENTER:
             self.clear_screen()
             if self.selected_item == 0:
                 scan_data = launch_scan()
@@ -113,37 +113,80 @@ class Menu(ScrollableList):
 
             elif self.selected_item == 1:
                 if not self.active_ips:
-                    "No active IPs, execute first option"
+                    print("No active IPs, execute first option")
+                    return
 
-                self.items = [f"{idx + 1}. {ip}" for idx, ip in enumerate(self.active_ips)]
-                self.selected_item = 0
+                ip_menu_items = [f"{idx + 1}. {ip}" for idx, ip in enumerate(self.active_ips)]
+                ip_menu = IPMenu(self.term, ip_menu_items, [], self.controls, parent=self)
+                ip_menu.active_ips = self.active_ips
+                time.sleep(0.5)
+                ip_menu.run()
+
                 self.print_menu()
 
     def run(self):
         with self.term.fullscreen(), self.term.hidden_cursor():
             self.print_menu()
             while True:
-                direction = self.controls.get_direction()
+                direction = self.controls.direction
                 if direction:
-                    if direction in ["up", "down"]:
-                        self.move_selection(direction)
+                    if direction in [Direction.UP, Direction.DOWN]:
+                        self.move_selection(direction.value)
                         self.print_menu()
-                    elif direction == "center":
+                    elif direction == Direction.CENTER:
                         self.execute_selected()
-                    elif direction == "back":
+                    elif direction == Direction.BACK:
+                        if self.parent:
+                            return
+                        else:
+                            self.clear_screen()
+                            self.print_menu()
+                    elif direction == Direction.SCROLL_UP or direction == Direction.SCROLL_DOWN:
                         self.clear_screen()
-                        self.print_menu()
-                    elif direction == "scroll_up" or direction == "scroll_down":
-                        self.clear_screen()
-                        self.scroll(direction)
+                        self.scroll(direction.value)
+                time.sleep(0.1)
+
+
+class IPMenu(Menu):
+
+    # override "options" for avoid executing principal menu
+    def execute_selected(self):
+        if self.controls.direction == Direction.CENTER:
+            self.clear_screen()
+            selected_ip = self.active_ips[self.selected_item]
+            scan_ip_menu = ScanIPMenu(self.term, [selected_ip], [], self.controls, parent=self)
+            scan_ip_menu.run()
+
+            self.print_menu()
+
+
+class ScanIPMenu(Menu):
+
+    def print_menu(self):
+        print(f"Scanning selected IP: {self.items[0]}")
+
+    # override "options" for avoid executing principal menu
+    def execute_selected(self):
+        if self.controls.direction == Direction.CENTER:
+            print("Center button pressed, but there is no action defined in this context.")
+
+    def run(self):
+        with self.term.fullscreen(), self.term.hidden_cursor():
+            self.print_menu()
+            while True:
+                direction = self.controls.direction
+                if direction == Direction.BACK:
+                    return
                 time.sleep(0.1)
 
 
 def main():
     term = Terminal()
+    controls = Controls()
     menu_items = ["Scan Network", "Scan IP", "Option 3", "Option 4", "Option 5", "Option 6", "Option 7"]
     scrollable_items = []
-    menu = Menu(term, menu_items, scrollable_items)
+    active_ips = []
+    menu = Menu(term, menu_items, scrollable_items, controls, active_ips)
     menu.run()
 
 

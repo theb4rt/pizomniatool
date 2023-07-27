@@ -6,7 +6,8 @@ from blessed import Terminal
 from gpiozero import Button
 from scaning import launch_scan
 import time
-import keyboard
+
+from scrollable_list import ScrollableList
 
 KEY1 = 3  # Joystick center
 KEY2 = 5  # Joystick up
@@ -54,33 +55,6 @@ class Controls:
         else:
             return None
 
-    # key_combination(["shift", "page up"])
-    # key_combination(["shift", "up"])
-    # key_combination(["shift", "page down"])
-    # key_combination(["shift", "down"])
-
-DISPLAY_LINES = 4
-
-class ScrollableList:
-    def __init__(self, term, scrollable_items):
-        self.term = term
-        self.scrollable_items = scrollable_items
-        self.offset = 0
-
-    def print_scrollable_items(self):
-        self.clear_screen()
-        print("\n")
-        for i in range(self.offset, min(self.offset + DISPLAY_LINES, len(self.scrollable_items))):
-            print(self.scrollable_items[i] + "\n")
-
-    def scroll(self, direction):
-        if direction == "scroll_up":
-            self.offset = max(0, self.offset - 1)
-            self.print_scrollable_items()
-        elif direction == "scroll_down":
-            self.offset = min(len(self.scrollable_items) - DISPLAY_LINES, self.offset + 1)
-            self.print_scrollable_items()
-
 
 class Menu(ScrollableList):
     def __init__(self, term, items, scrollable_items):
@@ -90,18 +64,13 @@ class Menu(ScrollableList):
         self.selected_item = 0
         self.controls = Controls()
 
-    def key_combination(self, combination):
-        for key in combination:
-            keyboard.press_and_release(key)
-            time.sleep(0.1)
-
     def print_menu(self):
         self.clear_screen()
         with self.term.location(0, 0):
             title = f"""{self.term.bold_green}
-    ┏━━━━━━━━━━━━━━━━━┓
-    ┃   PiZ0mn1aTool  ┃
-    ┗━━━━━━━━━━━━━━━━━┛
+    ┏━━━━━━━━━━━━━━━━━━━┓
+    ┃    PiZ0mn1aTool   ┃
+    ┗━━━━━━━━━━━━━━━━━━━┛
     {self.term.normal}"""
             print(self.term.center(title))
             print(self.term.center('-' * self.term.width))
@@ -153,6 +122,7 @@ class Menu(ScrollableList):
                         self.clear_screen()
                         self.print_menu()
                     elif direction == "scroll_up" or direction == "scroll_down":
+                        self.clear_screen()
                         self.scroll(direction)
                 time.sleep(0.1)
 

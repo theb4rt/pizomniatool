@@ -104,9 +104,9 @@ class Menu(ScrollableList):
                 self.scrollable_items.clear()
                 for key, value in scan_list.items():
                     iteration += 1
-                    ip = str(iteration) + ". " + key + " -> "
-                    os = value["os_type"] + ' - ' if value["os_type"] != "-" else ""
-                    mac = value["mac_name"] if value["mac_addr"] != "-" else " - "
+                    ip = str(iteration) + ". " + self.term.green(key) + " -> "
+                    os = self.term.yellow(value["os_type"] + ' - ') if value["os_type"] != "-" else ""
+                    mac = self.term.cyan(value["mac_name"]) if value["mac_addr"] != "-" else " - "
                     self.scrollable_items.append(ip + os + mac)
                 self.offset = 0
                 self.print_scrollable_items()

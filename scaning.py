@@ -79,7 +79,7 @@ def launch_scan():
     sorted_ips = sorted(active_ips, key=lambda ip: [int(i) for i in ip.split('.')])
     results = scanner.scan_os(sorted_ips)
 
-    return results
+    return {'active_ips': active_ips, 'results': results}
 
 
 if __name__ == "__main__":

@@ -62,6 +62,7 @@ class Menu(ScrollableList):
         self.term = term
         self.items = items
         self.selected_item = 0
+        self.active_ips = []
         self.controls = Controls()
 
     def print_menu(self):
@@ -95,7 +96,10 @@ class Menu(ScrollableList):
         if self.controls.get_direction() == "center":
             self.clear_screen()
             if self.selected_item == 0:
-                scan_list = launch_scan()
+                scan_data = launch_scan()
+                active_ips = scan_data['active_ips']
+                scan_list = scan_data['results']
+                self.active_ips = active_ips
                 iteration = 0
                 self.scrollable_items.clear()
                 for key, value in scan_list.items():
@@ -106,6 +110,14 @@ class Menu(ScrollableList):
                     self.scrollable_items.append(ip + os + mac)
                 self.offset = 0
                 self.print_scrollable_items()
+
+            elif self.selected_item == 1:
+                if not self.active_ips:
+                    "No active IPs, execute first option"
+
+                self.items = [f"{idx + 1}. {ip}" for idx, ip in enumerate(self.active_ips)]
+                self.selected_item = 0
+                self.print_menu()
 
     def run(self):
         with self.term.fullscreen(), self.term.hidden_cursor():
@@ -129,7 +141,7 @@ class Menu(ScrollableList):
 
 def main():
     term = Terminal()
-    menu_items = ["Scan Network", "Option 2", "Option 3", "Option 4", "Option 5", "Option 6", "Option 7"]
+    menu_items = ["Scan Network", "Scan IP", "Option 3", "Option 4", "Option 5", "Option 6", "Option 7"]
     scrollable_items = []
     menu = Menu(term, menu_items, scrollable_items)
     menu.run()

@@ -33,8 +33,11 @@ class NetworkScanner:
     def scan_network(self):
         ip = self.get_ip_address()
         netmask = self.get_netmask()
+        now = datetime.datetime.now()
+        date_time_string = now.strftime("%Y-%m-%d-%H-%M")
+        output_filename = f"active_hosts_{date_time_string}"
 
-        child = pexpect.spawn(f'sudo nmap -sP {ip}/{netmask}')
+        child = pexpect.spawn(f'sudo nmap -sP -oA {output_filename} {ip}/{netmask}')
 
         full_output = ""
         pbar = tqdm(total=100, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}', colour='green')

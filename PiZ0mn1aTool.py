@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import struct
+
 import time
 from blessed import Terminal
 from gpiozero import Button
@@ -8,6 +8,7 @@ from scrollable_list import ScrollableList
 from enum import Enum
 import socket
 import fcntl
+import struct
 
 
 class Key(Enum):
@@ -67,6 +68,7 @@ class Menu(ScrollableList):
         self.selected_item = 0
         self.active_ips = []
         self.parent = parent
+        self.page_size = 12
         self.if_name = 'wlan0'
 
     def get_ip_address(self):
@@ -86,26 +88,32 @@ class Menu(ScrollableList):
         )[20:24])
 
         return sum(bin(int(x)).count('1') for x in netmask.split('.'))
+
     def print_menu(self):
         ip = self.get_ip_address()
         netmask = self.get_netmask()
         ip_address = f'{ip} / {netmask}'
-
         self.clear_screen()
         with self.term.location(0, 0):
             title = f"""{self.term.bold_green}
-    ┏━━━━━━━━━━━━━━━━━━━━━┓
-    ┃     PiZ0mn1aTool    ┃
-    ┗━━━━━━━━━━━━━━━━━━━━━┛
+    ┏━━━━━━━━━━━━━━━━━━━━━━┓
+    ┃     PiZ0mn1aTool     ┃
+    ┗━━━━━━━━━━━━━━━━━━━━━━┛
     {self.term.normal}"""
             print(self.term.center(title))
             print(self.term.center(self.term.bold_green(ip_address)))
             print(self.term.center('-' * self.term.width))
-            for i, item in enumerate(self.items):
-                if i == self.selected_item:
-                    print(self.term.center('-> ' + self.term.bold(item)))
-                else:
-                    print(self.term.center('   ' + item))
+            start_index = self.selected_item - self.page_size if self.selected_item >= self.page_size else 0
+            end_index = start_index + self.page_size
+            for i in range(self.page_size):
+                index = self.selected_item - self.selected_item % self.page_size + i
+                if index < len(self.items):
+                    item = self.items[index]
+                    if index == self.selected_item:
+                        print(self.term.center('-> ' + self.term.bold(item)))
+                    else:
+                        print(self.term.center('   ' + item))
+
             print(self.term.center('-' * self.term.width))
 
     def clear_screen(self):

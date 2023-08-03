@@ -1,11 +1,13 @@
 #!/usr/bin/env python
-
+import struct
 import time
 from blessed import Terminal
 from gpiozero import Button
 from scaning import launch_scan, NetworkScanner
 from scrollable_list import ScrollableList
 from enum import Enum
+import socket
+import fcntl
 
 
 class Key(Enum):
@@ -65,16 +67,39 @@ class Menu(ScrollableList):
         self.selected_item = 0
         self.active_ips = []
         self.parent = parent
+        self.if_name = 'wlan0'
 
+    def get_ip_address(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x8915,
+            struct.pack('256s', self.if_name[:15].encode('utf-8'))
+        )[20:24])
+
+    def get_netmask(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        netmask = socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x891b,
+            struct.pack('256s', self.if_name[:15].encode('utf-8'))
+        )[20:24])
+
+        return sum(bin(int(x)).count('1') for x in netmask.split('.'))
     def print_menu(self):
+        ip = self.get_ip_address()
+        netmask = self.get_netmask()
+        ip_address = f'{ip} / {netmask}'
+
         self.clear_screen()
         with self.term.location(0, 0):
             title = f"""{self.term.bold_green}
-    ┏━━━━━━━━━━━━━━━━━━━┓
-    ┃    PiZ0mn1aTool   ┃
-    ┗━━━━━━━━━━━━━━━━━━━┛
+    ┏━━━━━━━━━━━━━━━━━━━━━┓
+    ┃     PiZ0mn1aTool    ┃
+    ┗━━━━━━━━━━━━━━━━━━━━━┛
     {self.term.normal}"""
             print(self.term.center(title))
+            print(self.term.center(self.term.bold_green(ip_address)))
             print(self.term.center('-' * self.term.width))
             for i, item in enumerate(self.items):
                 if i == self.selected_item:

@@ -3,7 +3,7 @@
 import time
 from blessed import Terminal
 from gpiozero import Button
-from scaning import launch_scan
+from scaning import launch_scan, NetworkScanner
 from scrollable_list import ScrollableList
 from enum import Enum
 
@@ -97,17 +97,16 @@ class Menu(ScrollableList):
             self.clear_screen()
             if self.selected_item == 0:
                 scan_data = launch_scan()
-                active_ips = scan_data['active_ips']
                 scan_list = scan_data['results']
+                active_ips = scan_data['active_ips']
                 self.active_ips = active_ips
                 iteration = 0
                 self.scrollable_items.clear()
                 for key, value in scan_list.items():
                     iteration += 1
                     ip = str(iteration) + ". " + self.term.green(key) + " -> "
-                    os = self.term.yellow(value["os_type"] + ' - ') if value["os_type"] != "-" else ""
-                    mac = self.term.cyan(value["mac_name"]) if value["mac_addr"] != "-" else " - "
-                    self.scrollable_items.append(ip + os + mac)
+                    mac = self.term.cyan(value["mac_name"]) if value["mac_address"] != "-" else " - "
+                    self.scrollable_items.append(ip + mac)
                 self.offset = 0
                 self.print_scrollable_items()
 
@@ -163,7 +162,15 @@ class IPMenu(Menu):
 class ScanIPMenu(Menu):
 
     def print_menu(self):
-        print(f"Scanning selected IP: {self.items[0]}")
+        list_ports = NetworkScanner.scan_single(self.items[0])
+        self.scrollable_items.clear()
+        for port, details in list_ports.items():
+            port_str = self.term.yellow(f"Port: {port}")
+            service_str = self.term.green(f"Service: {details['service']}")
+            version_str = self.term.cyan(f"Version: {details['version']}")
+            self.scrollable_items.append(
+                port_str + '\n' + service_str + '\n' + version_str + '\n' + "------------------")
+        self.print_scrollable_items()
 
     # override "options" for avoid executing principal menu
     def execute_selected(self):
@@ -177,6 +184,9 @@ class ScanIPMenu(Menu):
                 direction = self.controls.direction
                 if direction == Direction.BACK:
                     return
+                elif direction in [Direction.SCROLL_UP, Direction.SCROLL_DOWN]:
+                    self.clear_screen()
+                    self.scroll(direction.value)
                 time.sleep(0.1)
 
 
@@ -186,7 +196,7 @@ def main():
     menu_items = ["Scan Network", "Scan IP", "Option 3", "Option 4", "Option 5", "Option 6", "Option 7"]
     scrollable_items = []
     active_ips = []
-    menu = Menu(term, menu_items, scrollable_items, controls, active_ips)
+    menu = Menu(term=term, items=menu_items, scrollable_items=scrollable_items, controls=controls, parent=None)
     menu.run()
 
 

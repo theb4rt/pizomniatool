@@ -4,6 +4,8 @@ import fcntl
 import struct
 import subprocess
 from tqdm import tqdm
+import datetime
+import pexpect
 
 
 class NetworkScanner:
@@ -32,26 +34,57 @@ class NetworkScanner:
         ip = self.get_ip_address()
         netmask = self.get_netmask()
 
-        scan_hosts_sudo = subprocess.check_output(f"sudo nmap -sP {ip}/{netmask}", shell=True).decode()
-        scan_hosts = subprocess.check_output(f"nmap -sP {ip}/{netmask}", shell=True).decode()
+        child = pexpect.spawn(f'sudo nmap -sP {ip}/{netmask}')
 
-        scan_hosts += scan_hosts_sudo
+        full_output = ""
+        pbar = tqdm(total=100, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}', colour='green')
+        while child.isalive():
+            try:
+                index = child.expect(['\n', pexpect.EOF, pexpect.TIMEOUT], timeout=10)
+                if index == 0:
+                    line = child.before.decode()
+                    full_output += line + "\n"
+                    child.sendline('')
+                    percent_done = re.search(r'About (\d+\.\d+)% done', line)
+                    if percent_done:
+                        pbar.update(float(percent_done.group(1)) - pbar.n)
 
-        active_ips = list(set(re.findall(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", scan_hosts)))
-        if ip in active_ips:
-            active_ips.remove(ip)
+            except pexpect.exceptions.TIMEOUT:
+                continue
+        pbar.close()
+        remaining_output = child.readlines()
+        full_output += "".join([line.decode() for line in remaining_output])
 
-        return active_ips
+        data = {}
+        ip_address = None
+        for line in full_output.split('\n'):
+            ip_match = re.search(r'Nmap scan report for ([\d\.]+)', line)
+            mac_match = re.search(r'MAC Address: ([\w:]+) \((.+)\)', line)
+
+            if ip_match:
+                ip_address = ip_match.group(1)
+            elif mac_match and ip_address:
+                mac_address, mac_name = mac_match.groups()
+                data[ip_address] = {'mac_address': mac_address, 'mac_name': mac_name}
+                ip_address = None
+
+        return data
 
     def scan_os(self, active_ips):
         results = {}
 
         for ip in tqdm(active_ips, bar_format="{l_bar}{bar}", desc="Scanning"):
+            now = datetime.datetime.now()
+            date_time_string = now.strftime("%Y-%m-%d-%H-%M")
+            output_filename = f"os_scan_{ip.replace('.', '_')}_{date_time_string}"
             os_scan = []
             try:
-                os_scan = subprocess.check_output(["sudo", "nmap", "-O", ip], stderr=subprocess.DEVNULL).decode()
+                os_scan = subprocess.check_output(["sudo", "nmap", "-O", "-oA", output_filename, ip],
+                                                  stderr=subprocess.DEVNULL).decode()
             except subprocess.CalledProcessError as e:
                 print("Error:", e)
+
+
 
             os_type = re.search(r"OS details: (.+?)\n", os_scan)
             mac_addr = re.search(r"MAC Address: ([\dA-Fa-f:.]+) \((.+?)\)", os_scan)
@@ -72,14 +105,51 @@ class NetworkScanner:
                 results[ip]["mac_name"] = ""
         return results
 
+    @staticmethod
+    def scan_single(ip):
+        scan_output = subprocess.check_output(["sudo", "nmap", "-Pn", "-p-", ip], stderr=subprocess.DEVNULL).decode()
+        open_ports = []
+        for line in scan_output.split('\n'):
+            match = re.search(r'(\d+)/tcp\s+open', line)
+            if match:
+                open_ports.append(int(match.group(1)))
+        service_versions = NetworkScanner.get_ports_version(open_ports, ip)
+        return service_versions
+
+    @staticmethod
+    def get_ports_version(open_ports, ip):
+        now = datetime.datetime.now()
+        date_time_string = now.strftime("%Y-%m-%d-%H-%M")
+        output_filename = f"ports_version_{ip.replace('.', '_')}_{date_time_string}"
+
+        scan_output = subprocess.check_output(
+            ["sudo", "nmap", "-sV", "-p", ",".join(map(str, open_ports)), ip, "-oA", output_filename],
+            stderr=subprocess.DEVNULL).decode()
+
+        service_versions = {}
+        for line in scan_output.split('\n'):
+            match = re.search(r'(\d+)/tcp\s+open\s+(\w+\??)(?:\s+(.*))?', line)
+            if match:
+                port = int(match.group(1))
+                service = match.group(2) if match.group(2) else '-'
+                version = match.group(3) if match.group(3) else '-'
+                service_versions[port] = {'service': service, 'version': version}
+        return service_versions
+
+        # for port, details in service_versions.items():
+        #     print(f"Port: {port}")
+        #     print(f"Service: {details['service']}")
+        #     print(f"Version: {details['version']}")
+        #     print("------------------")
+
 
 def launch_scan():
     scanner = NetworkScanner('wlan0')
-    active_ips = scanner.scan_network()
-    sorted_ips = sorted(active_ips, key=lambda ip: [int(i) for i in ip.split('.')])
-    results = scanner.scan_os(sorted_ips)
+    scan_output = scanner.scan_network()
+    sorted_ips = sorted(scan_output, key=lambda ip: [int(i) for i in ip.split('.')])
+    # print(scan_output)
 
-    return {'active_ips': active_ips, 'results': results}
+    return {"active_ips": sorted_ips, "results": scan_output}
 
 
 if __name__ == "__main__":

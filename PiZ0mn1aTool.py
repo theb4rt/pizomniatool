@@ -226,7 +226,7 @@ class ScanIPMenu(Menu):
 def main():
     term = Terminal()
     controls = Controls()
-    menu_items = ["Scan Network", "Scan IP", "Option 3", "Option 4", "Option 5", "Option 6", "Option 7"]
+    menu_items = ["Scan Network", "Scan IP", "Bluetooth Attack", "Wireless Module", "Metasploit", "Sniffing", "Exit"]
     scrollable_items = []
     active_ips = []
     menu = Menu(term=term, items=menu_items, scrollable_items=scrollable_items, controls=controls, parent=None)

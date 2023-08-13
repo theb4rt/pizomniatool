@@ -9,36 +9,23 @@ import pexpect
 
 
 class NetworkScanner:
-    def __init__(self, ifname):
-        self.ifname = ifname
+    def __init__(self, local_ip=None, netmask=None, target_ip=None):
+        self.local_ip = local_ip
+        self.netmask = netmask
+        self.target_ip = None
 
-    def get_ip_address(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        return socket.inet_ntoa(fcntl.ioctl(
-            s.fileno(),
-            0x8915,
-            struct.pack('256s', self.ifname[:15].encode('utf-8'))
-        )[20:24])
+    def initial_scan(self):
+        if self.local_ip and self.netmask:
+            active_hosts = self.scan_network(self.local_ip, self.netmask)
+            sorted_ips = sorted(active_hosts, key=lambda ip: [int(i) for i in ip.split('.')])
+            return {'results': active_hosts, 'active_ips': sorted_ips}
 
-    def get_netmask(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        netmask = socket.inet_ntoa(fcntl.ioctl(
-            s.fileno(),
-            0x891b,
-            struct.pack('256s', self.ifname[:15].encode('utf-8'))
-        )[20:24])
-
-        return sum(bin(int(x)).count('1') for x in netmask.split('.'))
-
-    def scan_network(self):
-        ip = self.get_ip_address()
-        netmask = self.get_netmask()
+    @staticmethod
+    def scan_network(local_ip, netmask):
         now = datetime.datetime.now()
         date_time_string = now.strftime("%Y-%m-%d-%H-%M")
         output_filename = f"active_hosts_{date_time_string}"
-
-        child = pexpect.spawn(f'sudo nmap -sP -oA {output_filename} {ip}/{netmask}')
-
+        child = pexpect.spawn(f'sudo nmap -sP -oA {output_filename} {local_ip}/{netmask}')
         full_output = ""
         pbar = tqdm(total=100, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}', colour='green')
         while child.isalive():
@@ -51,7 +38,6 @@ class NetworkScanner:
                     percent_done = re.search(r'About (\d+\.\d+)% done', line)
                     if percent_done:
                         pbar.update(float(percent_done.group(1)) - pbar.n)
-
             except pexpect.exceptions.TIMEOUT:
                 continue
         pbar.close()
@@ -87,8 +73,6 @@ class NetworkScanner:
             except subprocess.CalledProcessError as e:
                 print("Error:", e)
 
-
-
             os_type = re.search(r"OS details: (.+?)\n", os_scan)
             mac_addr = re.search(r"MAC Address: ([\dA-Fa-f:.]+) \((.+?)\)", os_scan)
             try:
@@ -108,29 +92,82 @@ class NetworkScanner:
                 results[ip]["mac_name"] = ""
         return results
 
+    def launch_scan_single(self):
+        if self.target_ip is not None:
+            return self.scan_single(self.target_ip)
+
     @staticmethod
     def scan_single(ip):
-        scan_output = subprocess.check_output(["sudo", "nmap", "-Pn", "-p-", ip], stderr=subprocess.DEVNULL).decode()
+
+        child = pexpect.spawn(f'sudo nmap -Pn -p- {ip}')
+        full_output = ""
+        print("Starting scanning...\n")
+        pbar = tqdm(total=100, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}', colour='green')
+        last_progress = 0
+        while child.isalive():
+            try:
+                index = child.expect(['\n', pexpect.EOF, pexpect.TIMEOUT], timeout=1)
+                if index == 0:
+                    line = child.before.decode()
+                    full_output += line + "\n"
+                    child.sendline('')
+                    percent_done = re.search(r'About (\d+\.\d+)% done', line)
+
+                    if percent_done:
+                        progress = float(percent_done.group(1))
+                        pbar.update(progress - last_progress)
+                        last_progress = progress
+            except pexpect.exceptions.TIMEOUT:
+                continue
+        pbar.n = 100
+        pbar.refresh()
+        print("Complete!\n")
+
+        remaining_output = child.readlines()
+        full_output += "".join([line.decode() for line in remaining_output])
         open_ports = []
-        for line in scan_output.split('\n'):
+
+        for line in full_output.split('\n'):
             match = re.search(r'(\d+)/tcp\s+open', line)
             if match:
                 open_ports.append(int(match.group(1)))
-        service_versions = NetworkScanner.get_ports_version(open_ports, ip)
+        print("open ports: ", ",".join(map(str, open_ports)))
+        print("Getting info about ports.\n")
+
+        service_versions = NetworkScanner.get_ports_version(open_ports, ip, pbar)
         return service_versions
 
     @staticmethod
-    def get_ports_version(open_ports, ip):
+    def get_ports_version(open_ports, ip, pbar):
+
         now = datetime.datetime.now()
         date_time_string = now.strftime("%Y-%m-%d-%H-%M")
-        output_filename = f"ports_version_{ip.replace('.', '_')}_{date_time_string}"
+        output_filename = f"target_{ip.replace('.', '_')}_{date_time_string}.xml"
+        child = pexpect.spawn(f'sudo nmap -sV -p {",".join(map(str, open_ports))} {ip} -oA  {output_filename}')
+        full_output = ""
+        pbar.reset()
+        last_progress = 0
+        while child.isalive():
+            try:
+                index = child.expect(['\n', pexpect.EOF, pexpect.TIMEOUT], timeout=1)
+                if index == 0:
+                    line = child.before.decode()
+                    full_output += line + "\n"
+                    child.sendline('')
+                    percent_done = re.search(r'About (\d+\.\d+)% done', line)
 
-        scan_output = subprocess.check_output(
-            ["sudo", "nmap", "-sV", "-p", ",".join(map(str, open_ports)), ip, "-oA", output_filename],
-            stderr=subprocess.DEVNULL).decode()
-
+                    if percent_done:
+                        progress = float(percent_done.group(1))
+                        pbar.update(progress - last_progress)
+                        last_progress = progress
+            except pexpect.exceptions.TIMEOUT:
+                continue
+        pbar.close()
+        print("Complete!")
+        remaining_output = child.readlines()
+        full_output += "".join([line.decode() for line in remaining_output])
         service_versions = {}
-        for line in scan_output.split('\n'):
+        for line in full_output.split('\n'):
             match = re.search(r'(\d+)/tcp\s+open\s+(\w+\??)(?:\s+(.*))?', line)
             if match:
                 port = int(match.group(1))
@@ -139,21 +176,9 @@ class NetworkScanner:
                 service_versions[port] = {'service': service, 'version': version}
         return service_versions
 
-        # for port, details in service_versions.items():
-        #     print(f"Port: {port}")
-        #     print(f"Service: {details['service']}")
-        #     print(f"Version: {details['version']}")
-        #     print("------------------")
-
-
-def launch_scan():
-    scanner = NetworkScanner('wlan0')
-    scan_output = scanner.scan_network()
-    sorted_ips = sorted(scan_output, key=lambda ip: [int(i) for i in ip.split('.')])
-    # print(scan_output)
-
-    return {"active_ips": sorted_ips, "results": scan_output}
-
 
 if __name__ == "__main__":
-    launch_scan()
+    scanning = NetworkScanner()
+    scanning.target_ip = "192.168.1.100"
+    result = scanning.launch_scan_single()
+    print(result)

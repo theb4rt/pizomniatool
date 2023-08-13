@@ -3,7 +3,9 @@
 import time
 from blessed import Terminal
 from gpiozero import Button
-from scaning import launch_scan, NetworkScanner
+
+from network_info import NetworkInfo
+from scanning import NetworkScanner
 from scrollable_list import ScrollableList
 from enum import Enum
 import socket
@@ -69,35 +71,22 @@ class Menu(ScrollableList):
         self.active_ips = []
         self.parent = parent
         self.page_size = 12
-        self.if_name = 'wlan0'
-
-    def get_ip_address(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        return socket.inet_ntoa(fcntl.ioctl(
-            s.fileno(),
-            0x8915,
-            struct.pack('256s', self.if_name[:15].encode('utf-8'))
-        )[20:24])
-
-    def get_netmask(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        netmask = socket.inet_ntoa(fcntl.ioctl(
-            s.fileno(),
-            0x891b,
-            struct.pack('256s', self.if_name[:15].encode('utf-8'))
-        )[20:24])
-
-        return sum(bin(int(x)).count('1') for x in netmask.split('.'))
+        self.network_info = NetworkInfo()
+        self.network_scanner = NetworkScanner()
+        self.local_ip = None
+        self.mask = None
 
     def print_menu(self):
-        ip = self.get_ip_address()
-        netmask = self.get_netmask()
-        ip_address = f'{ip} / {netmask}'
+        self.local_ip = self.network_info.get_ip_address
+        self.mask = self.network_info.get_netmask
+        ip_address = (self.local_ip and self.mask and f'{self.local_ip} / {self.mask}') or ' - / -'
+
         self.clear_screen()
         with self.term.location(0, 0):
             title = f"""{self.term.bold_green}
     ┏━━━━━━━━━━━━━━━━━━━━━━┓
     ┃     PiZ0mn1aTool     ┃
+    ┃        by B4rt       ┃
     ┗━━━━━━━━━━━━━━━━━━━━━━┛
     {self.term.normal}"""
             print(self.term.center(title))
@@ -114,7 +103,7 @@ class Menu(ScrollableList):
                     else:
                         print(self.term.center('   ' + item))
 
-            print(self.term.center('-' * self.term.width))
+            # print(self.term.center('-' * self.term.width))
 
     def clear_screen(self):
         print(self.term.clear)
@@ -129,7 +118,12 @@ class Menu(ScrollableList):
         if self.controls.direction == Direction.CENTER:
             self.clear_screen()
             if self.selected_item == 0:
-                scan_data = launch_scan()
+                if self.local_ip is None:
+                    print("Cannot find local IP, check network connection")
+                    return
+                self.network_scanner.local_ip = self.local_ip
+                self.network_scanner.netmask = self.mask
+                scan_data = self.network_scanner.initial_scan()
                 scan_list = scan_data['results']
                 active_ips = scan_data['active_ips']
                 self.active_ips = active_ips
@@ -195,7 +189,8 @@ class IPMenu(Menu):
 class ScanIPMenu(Menu):
 
     def print_menu(self):
-        list_ports = NetworkScanner.scan_single(self.items[0])
+        self.network_scanner.target_ip = self.items[0]
+        list_ports = self.network_scanner.launch_scan_single()
         self.scrollable_items.clear()
         for port, details in list_ports.items():
             port_str = self.term.yellow(f"Port: {port}")
@@ -203,6 +198,7 @@ class ScanIPMenu(Menu):
             version_str = self.term.cyan(f"Version: {details['version']}")
             self.scrollable_items.append(
                 port_str + '\n' + service_str + '\n' + version_str + '\n' + "------------------")
+            self.display_lines = 2
         self.print_scrollable_items()
 
     # override "options" for avoid executing principal menu
@@ -216,6 +212,7 @@ class ScanIPMenu(Menu):
             while True:
                 direction = self.controls.direction
                 if direction == Direction.BACK:
+                    self.display_lines = 4
                     return
                 elif direction in [Direction.SCROLL_UP, Direction.SCROLL_DOWN]:
                     self.clear_screen()

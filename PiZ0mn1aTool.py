@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 
 import time
+from enum import Enum
+
 from blessed import Terminal
 from gpiozero import Button
 
 from network_info import NetworkInfo
 from scanning import NetworkScanner
 from scrollable_list import ScrollableList
-from enum import Enum
-import socket
-import fcntl
-import struct
 
 
 class Key(Enum):

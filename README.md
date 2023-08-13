@@ -6,7 +6,6 @@
 [![Twitter Follow](https://img.shields.io/twitter/follow/the_b4rt?style=social)](https://twitter.com/the_b4rt)
 [![Blog](https://img.shields.io/badge/blog-elblogdebart.com-blue)](https://elblogdebart.com)
 
-
 PiZ0mn1aTool is a compact and powerful hacking tool, crafted around the Raspberry Pi Zero 2W, paired with a Display
 Gaming LCD Hat.
 
@@ -16,7 +15,8 @@ Gaming LCD Hat.
 - Display Gaming LCD Hat 1.44"
 - Micro SD Card min. 16GB
 - Power Supply (5V 2.5A)
-- External USB WiFi Adapter (with monitor mode support)
+- (Optional) USB WiFi Dongle: With monitor mode support, only needed for specific WiFi attacks such as deauth,
+  etc. The internal WiFi card will work for most of the attacks.
 
 ## Installation
 
